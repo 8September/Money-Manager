@@ -1,7 +1,12 @@
 from fastapi import FastAPI, HTTPException
 
-app = FastAPI()
+from pydantic import BaseModel, Field
 
+from enum import Enum
+
+from decimal import Decimal
+
+app = FastAPI()
 
 accounts = {}
 transactions = {}
@@ -10,8 +15,52 @@ next_account_id = 1
 next_transaction_id = 1
 
 
-@app.post("/account/{account_id}/transactions")
-async def create_transaction(account_id: int, data: dict):
+class TransactionType(str, Enum):
+    INCOME = "income"
+    EXPENSE = "expense"
+
+
+class TransactionCreate(BaseModel):
+    transaction_type: TransactionType
+    amount: Decimal = Field(..., gt=0, max_digits=12, decimal_places=2)
+    comment: str = Field("", max_length=120)
+
+
+class TransactionRead(BaseModel):
+    id: int
+    account_id: int
+    transaction_type: TransactionType
+    amount: Decimal
+    comment: str
+
+
+class AccountCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=20)
+
+
+class AccountRead(BaseModel):
+    name: str
+
+
+class BalanceRead(BaseModel):
+    account_id: int
+    balance: Decimal
+
+
+async def calculate_balance(account_id: int) -> Decimal:
+    balance = Decimal("0")
+
+    for transaction in transactions.values():
+        if transaction["account_id"] == account_id:
+            if transaction["type"] == TransactionType.INCOME:
+                balance += transaction["amount"]
+            else:
+                balance -= transaction["amount"]
+    return balance
+
+
+@app.post("/account/{account_id}/transactions", response_model=TransactionRead)
+async def create_transaction(account_id: int, data: TransactionCreate):
 
     global next_transaction_id
 
@@ -21,9 +70,9 @@ async def create_transaction(account_id: int, data: dict):
     transaction = {
         "id": next_transaction_id,
         "account_id": account_id,
-        "type": data.get("type", ""),  # income, expence
-        "amount": data.get("amount", 0),
-        "comment": data.get("comment", ""),
+        "type": data.transaction_type,  # income, expence
+        "amount": data.amount,
+        "comment": data.comment,
     }
 
     transactions[next_transaction_id] = transaction
@@ -32,32 +81,24 @@ async def create_transaction(account_id: int, data: dict):
     return transaction
 
 
-@app.get("/accounts/{account_id}/balance")
+@app.get("/accounts/{account_id}/balance", response_model=BalanceRead)
 async def get_balance(account_id: int):
     if account_id not in accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    balance = 0
-
-    for transaction in transactions.values():
-        if transaction["account_id"] == account_id:
-            if transaction["type"] == "income":
-                balance += transaction["amount"]
-            else:
-                balance -= transaction["amount"]
     return {
         "account_id": account_id,
-        "balance": balance,
+        "balance": await calculate_balance(account_id),
     }
 
 
 @app.post("/account")
-async def create_account(data: dict):
+async def create_account(data: AccountCreate):
     global next_account_id
 
     account = {
         "id": next_account_id,
-        "name": data.get("name", ""),
+        "name": data.name,
     }
 
     accounts[next_account_id] = account
@@ -67,12 +108,12 @@ async def create_account(data: dict):
 
 
 @app.put("/accounts/{account_id}")
-async def update_account(account_id: int, data: dict):
+async def update_account(account_id: int, data: AccountRead):
     if account_id not in accounts:
         raise HTTPException(status_code=404, detail="Account not found")
 
     account = accounts[account_id]
-    account["name"] = data.get("name", "")
+    account["name"] = data.name
 
     return account
 
