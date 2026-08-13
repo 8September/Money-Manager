@@ -1,18 +1,45 @@
-from fastapi import FastAPI, HTTPException
+from collections.abc import AsyncGenerator
+from typing import Annotated
+from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from enum import Enum
-
 from decimal import Decimal
 
-app = FastAPI()
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import Base, SessionLocal, engine
+import models
 
 accounts = {}
 transactions = {}
 
 next_account_id = 1
 next_transaction_id = 1
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield
+
+    await engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as db:
+        yield db
+
+
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 class TransactionType(str, Enum):
