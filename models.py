@@ -7,7 +7,7 @@ from database import Base
 
 
 class Account(Base):
-    __tablename__ = "Accounts"
+    __tablename__ = "accounts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50))
@@ -20,7 +20,7 @@ class Account(Base):
 
 
 class Transaction(Base):
-    __tablename__ = "Transactions"
+    __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(
